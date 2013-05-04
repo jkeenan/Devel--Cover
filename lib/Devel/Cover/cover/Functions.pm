@@ -25,11 +25,20 @@ our @EXPORT_OK = qw(
     prepare_db
     launch
     new
+    run_test
+    merge_databases
+    dump_db
+    write_db
+    prepare_summary
+    second_prepare_db
+    execute_summary
+    execute_report
 );
-use File::Spec;
+use Data::Dumper ();  # no import of Dumper (use Devel::Cover::Dumper if needed)
 use Devel::Cover::DB;
 use File::Find;
 use File::Path;
+use File::Spec;
 use Getopt::Long;
 use Pod::Usage;
 
@@ -282,6 +291,135 @@ sub launch {
                      "$config->{report} report.\n";
         return 0;
     }
+}
+
+sub run_test {
+    my $self = shift;
+    my @ARGV = @_;
+    # TODO - make this a little robust
+    # system "$^X Makefile.PL" unless -e "Makefile";
+    delete_db($self, @ARGV) unless defined $self->{delete};
+    my $env_db_name = $self->{dbname};
+    $env_db_name =~ s/\\/\\\\/g if $^O eq 'MSWin32';
+    my $extra = "";
+    $extra .= ",-coverage,$_" for @{$self->{coverage}};
+    $extra .= ",-ignore,$_"
+        for @{$self->{ignore_re}},
+            map quotemeta glob, @{$self->{ignore}};
+    $extra .= ",-select,$_"
+        for @{$self->{select_re}},
+            map quotemeta glob, @{$self->{select}};
+
+    $self->{$_} = [] for qw( ignore ignoring select select_re );
+
+    local $ENV{ -d "t" ? "HARNESS_PERL_SWITCHES" : "PERL5OPT" } =
+        ($ENV{DEVEL_COVER_TEST_OPTS} || "") .
+        " -MDevel::Cover=-db,$env_db_name$extra";
+
+    my $test = test_command($self);
+
+    # touch the XS, C and H files so they rebuild
+    if ($self->{gcov})
+    {
+        my $t = $] > 5.7 ? undef : time;
+        my $xs = sub { utime $t, $t, $_ if /\.(xs|cc?|hh?)$/ };
+        File::Find::find({ wanted => $xs, no_chdir => 0 }, ".");
+    }
+    # print STDERR "$_: $ENV{$_}\n" for qw(PERL5OPT HARNESS_PERL_SWITCHES);
+    print STDERR "cover: running $test\n";
+    my $test_result = system $test || 0;
+    $self->{report} ||= "html";
+    return ($self, $test_result);
+}
+
+sub merge_databases {
+    my $self = shift;
+    my $db   = shift;
+    my @ARGV = @ARGV;
+    for my $merge (@ARGV)
+    {
+        print "Merging database from $merge\n" unless $self->{silent};
+        my $mdb = Devel::Cover::DB->new(db => $merge);
+        $mdb = $mdb->merge_runs;
+        $db->merge($mdb);
+    }
+    return $db;
+}
+
+sub dump_db {
+    my ($self, $db) = @_;
+    my $d = Data::Dumper->new([$db], ["db"]);
+    $d->Indent(1);
+    $d->Sortkeys(1) if $] >= 5.008;
+    print $d->Dump;
+    my $structure = Devel::Cover::DB::Structure->new(base => $self->{dbname});
+    $structure->read_all;
+    my $s = Data::Dumper->new([$structure], ["structure"]);
+    $s->Indent(1);
+    $s->Sortkeys(1) if $] >= 5.008;
+    print $s->Dump;
+    return 1;
+}
+
+sub write_db {
+    my ($self, $db) = @_;
+    $self->{dbname} = $self->{write} if length $self->{write};
+    print "Writing database to $self->{dbname}\n" unless $self->{silent};
+    $db->write($self->{dbname});
+}
+
+sub prepare_summary {
+    my ($self, $db) = @_;
+    $self->{coverage}    = [ $db->collected ] unless @{$self->{coverage}};
+    $self->{show}        = { map { $_ => 1 } @{$self->{coverage}} };
+    $self->{show}{total} = 1 if keys %{$self->{show}};
+
+    $db->calculate_summary(map { $_ => 1 } @{$self->{coverage}});
+    return ($self, $db);
+}
+
+sub second_prepare_db {
+    my ($self, $db) = @_;
+    # TODO - The sense of select and ignore should be reversed to match
+    # collection.
+    
+    my %f = map { $_ => 1 } (@{$self->{select}}
+                             ? map glob, @{$self->{select}}
+                             : $db->cover->items);
+    delete @f{map glob, @{$self->{ignore}}};
+    
+    my $keep = sub
+    {
+        my ($f) = @_;
+        return 0 unless exists $db->{summary}{$_};
+        for (@{$self->{ignore_re}})
+        {
+            return 0 if $f =~ /$_/
+        }
+        for (@{$self->{select_re}})
+        {
+            return 1 if $f =~ /$_/
+        }
+        !@{$self->{select_re}}
+    };
+    @{$self->{file}} = sort grep $keep->($_), keys %f;
+    return $self;
+}
+
+sub execute_summary {
+    my ($self, $db) = @_;
+    $db->print_summary(
+        $self->{file},
+        $self->{coverage},
+        {force => 1},
+    );
+    return 1;
+}
+
+sub execute_report {
+    my ($self, $db) = @_;
+    $self->{format}->report($db, $self);
+    return 1;
 }
 
 1;
