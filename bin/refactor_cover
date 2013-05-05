@@ -15,25 +15,11 @@ use warnings;
 # VERSION
 
 use Devel::Cover::DB;
-use Devel::Cover::cover::Functions qw(
+use Devel::Cover::cover::Defaults qw(
+    %defaults
     get_options
-    delete_db
-    test_command
-    run_gcov
-    prepare_db
-    launch
-    new
-    run_test
-    merge_databases
-    dump_db
-    write_db
-    prepare_summary
-    second_prepare_db
-    execute_report
-    execute_summary
 );
-
-use Config;
+use Devel::Cover::cover;
 
 # main program
 
@@ -49,76 +35,59 @@ if (!$ENV{DEVEL_COVER_SELF} && $INC{"Devel/Cover.pm"})
     die $err;
 }
 
-my %defaults = (
-    add_uncoverable_point    => [],
-    annotation               => [],
-    coverage                 => [],
-    delete                   => undef,
-    delete_uncoverable_point => [],
-    gcov                     => $Config{gccversion},
-    ignore                   => [],
-    ignore_re                => [],
-    launch                   => 0,
-    make                     => $Config{make},
-    report                   => "",
-    report_c0                => 75,
-    report_c1                => 90,
-    report_c2                => 100,
-    select                   => [],
-    select_re                => [],
-    summary                  => 1,
-    uncoverable_file         => [".uncoverable", glob("~/.uncoverable")],
-);
-
 my $config = get_options(\%defaults);
 
-my ($self) = new($config);
+my $self = Devel::Cover::cover->new($config);
 exit 0 unless defined $self;
 
 if ($self->{delete}) {
-    delete_db($self, @ARGV);
+    $self->delete_db(@ARGV);
     exit 0;
 }
 
 my $test_result = 0;
 if ($self->{test}) {
-    ($self, $test_result) = run_test($self, @ARGV);
+    $test_result = $self->run_test(@ARGV);
 }
 
-run_gcov($self) if ($self->{gcov});
+if ($self->{gcov}) {
+    $self->run_gcov();
+}
 
-my $db = prepare_db($self);
-exit 0 unless defined $db;
+my $rv = $self->prepare_db();
+exit 0 unless defined $rv;
 
-$db = merge_databases($self, $db, @ARGV);
+$self->merge_databases(@ARGV);
 
 if ($self->{dump_db}) {
-    dump_db($self, $db);
+    $self->dump_db();
     exit 0;
 }
 
 if (exists $self->{write}) {
-    write_db($self, $db);
+    $self->write_db();
 }
 
+# Can $self->{report} ever be false?
 exit 0 unless $self->{summary} || $self->{report};
 
-($self, $db) = prepare_summary($self, $db);
+$self->prepare_summary();
 
 print "\n\n" unless $self->{silent};
 
-$self = second_prepare_db($self, $db);
+$self->second_prepare_db();
 
 if ($self->{summary}) {
-    execute_summary($self, $db);
+    $self->execute_summary();
 }
 
+# Can length($self->{report}) ever be 0?
 exit $test_result unless length $self->{report};
 
-execute_report($self, $db);
+$self->execute_report();
 
 if ($self->{launch}) {
-    launch($self, $self->{format});
+    $self->launch();
 }
 
 exit $test_result;

@@ -5,35 +5,13 @@
 # The latest version of this software should be available from my homepage:
 # http://www.pjcj.net
 
-package Devel::Cover::cover::Functions;
+package Devel::Cover::cover;
 
 use strict;
 use warnings;
 
 # VERSION
 
-#use Cwd 'abs_path';
-use base 'Exporter';
-our @EXPORT_OK = qw(
-    get_options
-    delete_db
-    test_command
-    gcov_args
-    mb_test_command
-    mm_test_command
-    run_gcov
-    prepare_db
-    launch
-    new
-    run_test
-    merge_databases
-    dump_db
-    write_db
-    prepare_summary
-    second_prepare_db
-    execute_summary
-    execute_report
-);
 use Data::Dumper ();  # no import of Dumper (use Devel::Cover::Dumper if needed)
 use Devel::Cover::DB;
 use File::Find;
@@ -42,54 +20,8 @@ use File::Spec;
 use Getopt::Long;
 use Pod::Usage;
 
-sub get_options
-{
-    my $defaults = shift;
-    my $Options = {};
-    while (my ($k,$v) = each %{$defaults}) {
-        $Options->{$k} = $v;
-    }
-    Getopt::Long::Configure("pass_through");
-    die "Bad option" unless
-        GetOptions($Options,            # Store the options in the Options hash.
-                   "write:s" => sub
-                   {
-                       @$Options{qw( write summary )} = ($_[1], 0)
-                   },
-                   qw(
-                       add_uncoverable_point=s
-                       annotation=s
-                       clean_uncoverable_points!
-                       coverage=s
-                       delete!
-                       delete_uncoverable_point=s
-                       dump_db!
-                       gcov!
-                       help|h!
-                       ignore_re=s
-                       ignore=s
-                       info|i!
-                       launch!
-                       make=s
-                       outputdir=s
-                       report_c0=s
-                       report_c1=s
-                       report_c2=s
-                       report=s
-                       select_re=s
-                       select=s
-                       silent!
-                       summary!
-                       test!
-                       uncoverable_file=s
-                       version|v!
-                     ));
-    Getopt::Long::Configure("nopass_through");
-    $Options->{report} ||= "html" unless exists $Options->{write};
-    return $Options;
-}
-
 sub new {
+    my $class = shift;
     my $config = shift;
     my $data = {};
     while (my ($k,$v) = each %{$config}) {
@@ -127,7 +59,8 @@ sub new {
         push @{$data->{annotations}}, $ann;
     }
     
-    # XXX: not working: should be Devel::Cover's release (CPAN) $VERSION,
+    # XXX: -version not working:
+    # should be Devel::Cover's release (CPAN) $VERSION,
     # e.g., 1.02
 
     if ($data->{version}) {
@@ -153,11 +86,10 @@ sub new {
     $data->{outputdir} = $od if defined $od;
     mkpath($data->{outputdir}) unless -d $data->{outputdir};
 
-    return $data;
+    return bless $data, $class;
 }
 
-sub delete_db
-{
+sub delete_db {
     my $self = shift;
     my @dbs_to_delete = ($self->{dbname}, @_);
     for my $del (@dbs_to_delete)
@@ -175,46 +107,80 @@ sub delete_db
     }
 }
 
+sub run_test {
+    my $self = shift;
+    my @ARGV = @_;
+    # TODO - make this a little robust
+    # system "$^X Makefile.PL" unless -e "Makefile";
+    $self->delete_db(@ARGV) unless defined $self->{delete};
+    my $env_db_name = $self->{dbname};
+    $env_db_name =~ s/\\/\\\\/g if $^O eq 'MSWin32';
+    my $extra = "";
+    $extra .= ",-coverage,$_" for @{$self->{coverage}};
+    $extra .= ",-ignore,$_"
+        for @{$self->{ignore_re}},
+            map quotemeta glob, @{$self->{ignore}};
+    $extra .= ",-select,$_"
+        for @{$self->{select_re}},
+            map quotemeta glob, @{$self->{select}};
+
+    $self->{$_} = [] for qw( ignore ignoring select select_re );
+
+    local $ENV{ -d "t" ? "HARNESS_PERL_SWITCHES" : "PERL5OPT" } =
+        ($ENV{DEVEL_COVER_TEST_OPTS} || "") .
+        " -MDevel::Cover=-db,$env_db_name$extra";
+
+    my $test = $self->test_command();
+
+    # touch the XS, C and H files so they rebuild
+    if ($self->{gcov})
+    {
+        my $t = $] > 5.7 ? undef : time;
+        my $xs = sub { utime $t, $t, $_ if /\.(xs|cc?|hh?)$/ };
+        File::Find::find({ wanted => $xs, no_chdir => 0 }, ".");
+    }
+    # print STDERR "$_: $ENV{$_}\n" for qw(PERL5OPT HARNESS_PERL_SWITCHES);
+    print STDERR "cover: running $test\n";
+    my $test_result = system $test || 0;
+    $self->{report} ||= "html";
+    return ($test_result);
+}
 
 # Decide whether to run ./Build test or make test
 sub test_command {
-    my $config = shift;
+    my $self = shift;
     -e "Build"
-        ? mb_test_command($config)
-        : mm_test_command($config);
+        ? $self->mb_test_command()
+        : $self->mm_test_command();
 }
 
 # Compiler arguments necessary to do a coverage run
 sub gcov_args() { "-fprofile-arcs -ftest-coverage" }
 
 # Test command for MakeMaker
-sub mm_test_command
-{
-    my $config = shift;
-    my $test = "$config->{make} test";
+sub mm_test_command {
+    my $self = shift;
+    my $test = "$self->{make} test";
 
-    if ($config->{gcov})
+    if ($self->{gcov})
     {
         my $o = gcov_args();
         $test .= qq{ "OPTIMIZE=-O0 $o" "OTHERLDFLAGS=$o"};
     }
-
-    $test
+    return $test;
 }
 
 # Test command for Module::Build
-sub mb_test_command
-{
-    my $config = shift;
+sub mb_test_command {
+    my $self = shift;
     my $test = './Build test';
 
-    if ($config->{gcov})
+    if ($self->{gcov})
     {
         my $o = gcov_args();
         $test .= qq{ "--extra_compiler_flags=-O0 $o" "--extra_linker_flags=$o"};
     }
-
-    $test
+    return $test;
 }
 
 sub run_gcov {
@@ -275,80 +241,26 @@ sub prepare_db {
     return if @{$self->{add_uncoverable_point}}    ||
               @{$self->{delete_uncoverable_point}} ||
               $self->{clean_uncoverable_points};
-    return $db;
-}
-
-sub launch {
-    my ($config, $format) = @_;
-    if ($format->can("launch"))
-    {
-        $format->launch($config);
-        return 1;
-    }
-    else
-    {
-        print STDERR "The launch option is not available for the ",
-                     "$config->{report} report.\n";
-        return 0;
-    }
-}
-
-sub run_test {
-    my $self = shift;
-    my @ARGV = @_;
-    # TODO - make this a little robust
-    # system "$^X Makefile.PL" unless -e "Makefile";
-    delete_db($self, @ARGV) unless defined $self->{delete};
-    my $env_db_name = $self->{dbname};
-    $env_db_name =~ s/\\/\\\\/g if $^O eq 'MSWin32';
-    my $extra = "";
-    $extra .= ",-coverage,$_" for @{$self->{coverage}};
-    $extra .= ",-ignore,$_"
-        for @{$self->{ignore_re}},
-            map quotemeta glob, @{$self->{ignore}};
-    $extra .= ",-select,$_"
-        for @{$self->{select_re}},
-            map quotemeta glob, @{$self->{select}};
-
-    $self->{$_} = [] for qw( ignore ignoring select select_re );
-
-    local $ENV{ -d "t" ? "HARNESS_PERL_SWITCHES" : "PERL5OPT" } =
-        ($ENV{DEVEL_COVER_TEST_OPTS} || "") .
-        " -MDevel::Cover=-db,$env_db_name$extra";
-
-    my $test = test_command($self);
-
-    # touch the XS, C and H files so they rebuild
-    if ($self->{gcov})
-    {
-        my $t = $] > 5.7 ? undef : time;
-        my $xs = sub { utime $t, $t, $_ if /\.(xs|cc?|hh?)$/ };
-        File::Find::find({ wanted => $xs, no_chdir => 0 }, ".");
-    }
-    # print STDERR "$_: $ENV{$_}\n" for qw(PERL5OPT HARNESS_PERL_SWITCHES);
-    print STDERR "cover: running $test\n";
-    my $test_result = system $test || 0;
-    $self->{report} ||= "html";
-    return ($self, $test_result);
+    return unless defined($db);
+    $self->{db} = $db;
+    return 1;
 }
 
 sub merge_databases {
     my $self = shift;
-    my $db   = shift;
-    my @ARGV = @ARGV;
-    for my $merge (@ARGV)
+    my @argv = @_;
+    for my $merge (@argv)
     {
         print "Merging database from $merge\n" unless $self->{silent};
         my $mdb = Devel::Cover::DB->new(db => $merge);
         $mdb = $mdb->merge_runs;
-        $db->merge($mdb);
+        $self->{db}->merge($mdb);
     }
-    return $db;
 }
 
 sub dump_db {
-    my ($self, $db) = @_;
-    my $d = Data::Dumper->new([$db], ["db"]);
+    my $self = shift;
+    my $d = Data::Dumper->new([$self->{db}], ["db"]);
     $d->Indent(1);
     $d->Sortkeys(1) if $] >= 5.008;
     print $d->Dump;
@@ -362,36 +274,35 @@ sub dump_db {
 }
 
 sub write_db {
-    my ($self, $db) = @_;
+    my $self = shift;
     $self->{dbname} = $self->{write} if length $self->{write};
     print "Writing database to $self->{dbname}\n" unless $self->{silent};
-    $db->write($self->{dbname});
+    $self->{db}->write($self->{dbname});
 }
 
 sub prepare_summary {
-    my ($self, $db) = @_;
-    $self->{coverage}    = [ $db->collected ] unless @{$self->{coverage}};
+    my $self = shift;
+    $self->{coverage}    = [ $self->{db}->collected ] unless @{$self->{coverage}};
     $self->{show}        = { map { $_ => 1 } @{$self->{coverage}} };
     $self->{show}{total} = 1 if keys %{$self->{show}};
 
-    $db->calculate_summary(map { $_ => 1 } @{$self->{coverage}});
-    return ($self, $db);
+    $self->{db}->calculate_summary(map { $_ => 1 } @{$self->{coverage}});
 }
 
 sub second_prepare_db {
-    my ($self, $db) = @_;
+    my $self = shift;
     # TODO - The sense of select and ignore should be reversed to match
     # collection.
     
     my %f = map { $_ => 1 } (@{$self->{select}}
                              ? map glob, @{$self->{select}}
-                             : $db->cover->items);
+                             : $self->{db}->cover->items);
     delete @f{map glob, @{$self->{ignore}}};
     
     my $keep = sub
     {
         my ($f) = @_;
-        return 0 unless exists $db->{summary}{$_};
+        return 0 unless exists $self->{db}->{summary}{$_};
         for (@{$self->{ignore_re}})
         {
             return 0 if $f =~ /$_/
@@ -403,12 +314,11 @@ sub second_prepare_db {
         !@{$self->{select_re}}
     };
     @{$self->{file}} = sort grep $keep->($_), keys %f;
-    return $self;
 }
 
 sub execute_summary {
-    my ($self, $db) = @_;
-    $db->print_summary(
+    my $self = shift;
+    $self->{db}->print_summary(
         $self->{file},
         $self->{coverage},
         {force => 1},
@@ -417,10 +327,31 @@ sub execute_summary {
 }
 
 sub execute_report {
-    my ($self, $db) = @_;
-    $self->{format}->report($db, $self);
+    my $self = shift;
+    $self->{format}->report($self->{db}, $self);
     return 1;
 }
+
+sub launch {
+    my $self = shift;
+    if ($self->{format}->can("launch"))
+    {
+        $self->{format}->launch($self);
+        return 1;
+    }
+    else
+    {
+        print STDERR "The launch option is not available for the ",
+                     "$self->{report} report.\n";
+        return 0;
+    }
+}
+
+1;
+
+__END__
+
+
 
 1;
 
@@ -428,16 +359,15 @@ __END__
 
 =head1 NAME
 
-Devel::Cover::cover::Functions - Functions called within F<cover>
+Devel::Cover::cover - Functions called within F<cover>
 
 =head1 SYNOPSIS
 
- use Devel::Cover::cover::Functions qw(
- );
+ use Devel::Cover::cover;
 
 =head1 DESCRIPTION
 
-This module holds functions called by F<cover>.
+This package provides methods called by F<cover>.
 
 =head1 SUBROUTINES
 
