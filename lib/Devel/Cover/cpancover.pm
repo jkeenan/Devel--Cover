@@ -10,7 +10,9 @@ our @EXPORT_OK = qw(
     write_csv
     write_html
     get_cover
+    run_cover
 );
+use Parallel::Iterator "iterate_as_array";
 
 sub read_results {
     my $Options = shift;
@@ -304,6 +306,23 @@ sub sys {
     my ($command) = @_;
     print "$command\n";
     system $command;
+}
+
+sub run_cover {
+    my $Options = shift;
+    my $workers = $ENV{CPANCOVER_WORKERS} || 0;
+    my @res = iterate_as_array
+    (
+        { workers => $workers },
+        sub {
+            eval {
+              get_cover ($_[1], $Options);
+              warn "\n\n\n[$_[1]]: $@\n\n\n" if $@;
+          };
+        },
+        $Options->{module},
+    );
+    return $Options;
 }
 
 1;

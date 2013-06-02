@@ -26,12 +26,13 @@ use Devel::Cover::cpancover qw(
     read_results
     write_html
     get_cover
+    run_cover
 );
 
-use Fcntl ":flock";
+#use Fcntl ":flock";
 use Getopt::Long;
 use Template 2.00;
-use Parallel::Iterator "iterate_as_array";
+#use Parallel::Iterator "iterate_as_array";
 
 # use Carp; $SIG{__DIE__} = \&Carp::confess;
 
@@ -47,18 +48,7 @@ my $Template = Template->new( {
 } );
 
 if ($Options->{collect}) {
-    my $workers = $ENV{CPANCOVER_WORKERS} || 0;
-    my @res = iterate_as_array
-    (
-        { workers => $workers },
-        sub {
-            eval {
-              get_cover ($_[1], $Options);
-              warn "\n\n\n[$_[1]]: $@\n\n\n" if $@;
-          };
-        },
-        $Options->{module},
-    );
+    $Options = run_cover($Options);
 }
 
 write_html($Options);
