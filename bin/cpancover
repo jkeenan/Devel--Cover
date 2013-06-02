@@ -393,6 +393,8 @@ sub main
         ],
     });
 
+print STDERR Dumper $Options;
+
     if ($Options->{collect})
     {
         my $workers = $ENV{CPANCOVER_WORKERS} || 0;
