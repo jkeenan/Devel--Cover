@@ -39,6 +39,8 @@ my $Options =
     report       => "html_basic",
 };
 
+main();
+
 sub get_options
 {
     die "Bad option" unless
@@ -525,7 +527,7 @@ This server generously donated by
 [% END %]
 EOT
 
-::main
+#::main
 
 __END__
 
