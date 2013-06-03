@@ -25,7 +25,6 @@ use Devel::Cover::cpancover::Template::Provider;
 use Devel::Cover::cpancover qw(
     read_results
     write_html
-    get_cover
     run_cover
 );
 
@@ -51,7 +50,7 @@ if ($Options->{collect}) {
     $Options = run_cover($Options);
 }
 
-write_html($Options);
+write_html($Options, $Template);
 
 ######### SUBROUTINES ##########
 

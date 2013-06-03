@@ -173,7 +173,7 @@ sub write_csv {
 }
 
 sub write_html {
-    my $Options = shift;
+    my ($Options, $Template) = @_;
     my $d = $Options->{directory};
     chdir $d or die "Can't chdir $d: $!\n";
 
@@ -222,7 +222,7 @@ sub write_html {
         }
     }
     write_stylesheet($Options);
-#    $Template->process("summary", $vars, $f) or die $Template->error();
+    $Template->process("summary", $vars, $f) or die $Template->error();
     write_csv($vars,$Options);
 	
     print "done.\n";
