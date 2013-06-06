@@ -28,12 +28,9 @@ use Devel::Cover::cpancover qw(
     run_cover
 );
 
-#use Fcntl ":flock";
 use Getopt::Long;
 use Template 2.00;
-#use Parallel::Iterator "iterate_as_array";
 
-# use Carp; $SIG{__DIE__} = \&Carp::confess;
 
 $|++;
 
@@ -94,9 +91,24 @@ cpancover - report coverage statistics on CPAN modules
 
 The following command line options are supported:
 
- -h -help              - show help
- -i -info              - show documentation
- -v -version           - show version
+    -h -help                - show help
+    -i -info                - show documentation
+    -v -version             - show version
+    -collect                - run 'cover' on modules; default is 'on'
+    -directory              - directory under which to search for modules
+                              needing coverage analysis
+    -force                  - force re-rebuild and re-test of module even if
+                              'cover' has already been run
+    -module                 - ???
+    -outputdir              - directory into which overall coverage report
+                              will be placed; defaults to value of 'directory'
+                              option or current directory
+    -outputfile             - name of overall summary file; defaults to
+                              'coverage.html'
+    -redo_cpancover_html    - defaults to 'off'
+    -redo_html              - defaults to 'off'
+    -report                 - type of output generated; defaults to
+                              'html_basic'
 
 =head1 DETAILS
 
@@ -119,10 +131,6 @@ The following exit values are returned:
 
 =head1 BUGS
 
- Incomplete.
- Undocumented.
- Needs to be redone properly.
-
 =head1 LICENCE
 
 Copyright 2002-2013, Paul Johnson (paul@pjcj.net)
@@ -133,3 +141,6 @@ The latest version of this software should be available from my homepage:
 http://www.pjcj.net
 
 =cut
+
+__END__
+# use Carp; $SIG{__DIE__} = \&Carp::confess;

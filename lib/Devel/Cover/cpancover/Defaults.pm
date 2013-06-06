@@ -21,6 +21,34 @@ use Cwd ();
 use Getopt::Long;
 use Pod::Usage;
 
+=head1 NAME
+
+Devel::Cover::cpancover::Defaults
+
+=head1 SYNOPSIS
+
+    use Devel::Cover::cpancover::Defaults qw(
+        %defaults
+        get_options
+    );
+
+    $config = get_options(\%defaults);
+
+=head1 DESCRIPTION
+
+This package exports, on demand only, identifiers used to establish a basic
+configuration for the program F<bin/cpancover>.
+
+=head1 EXPORTED IDENTIFIERS
+
+=head2 C<%defaults>
+
+A set of key-value pairs holding reasonable default values.  We will default
+to working in the current working directory, to list no modules on the
+command-line, and to generate a basic HTML report.
+
+=cut
+
 our %defaults = (
     collect      => 1,
     directory    => Cwd::cwd(),
@@ -28,6 +56,30 @@ our %defaults = (
     module       => [],
     report       => "html_basic",
 );
+
+=head2 C<get_options()>
+
+=over 4
+
+=item * Purpose
+
+Process command-line options to F<cpancover>.
+
+=item * Arguments
+
+Reference to a hash of default values.
+
+=item * Return Value
+
+Reference to a hash of key-value pairs populated by the default values
+provided as argument and by processing of command-line options.
+
+See F<bin/cpancover> for a description of command-line options currently
+available.
+
+=back
+
+=cut
 
 sub get_options {
     my $defaults = shift;
