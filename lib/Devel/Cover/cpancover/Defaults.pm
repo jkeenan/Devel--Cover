@@ -19,7 +19,6 @@ our @EXPORT_OK = qw(
 );
 use Cwd ();
 use Getopt::Long;
-use Pod::Usage;
 
 =head1 NAME
 
@@ -32,7 +31,7 @@ Devel::Cover::cpancover::Defaults
         get_options
     );
 
-    $config = get_options(\%defaults);
+    $Options = get_options(\%defaults);
 
 =head1 DESCRIPTION
 

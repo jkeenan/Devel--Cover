@@ -15,6 +15,7 @@ use warnings;
 # VERSION
 
 use lib qw( ./lib );
+use Pod::Usage;
 use Devel::Cover::DB;
 use Devel::Cover::Dumper;
 use Devel::Cover::cpancover::Defaults qw(
@@ -34,7 +35,7 @@ use Template 2.00;
 
 $|++;
 
-my $Options = semi_get_options();
+my $config = semi_get_options();
 
 my $Template = Template->new( {
     LOAD_TEMPLATES =>
@@ -43,35 +44,42 @@ my $Template = Template->new( {
     ],
 } );
 
-if ($Options->{collect}) {
-    $Options = run_cover($Options);
+if ($config->{collect}) {
+    $config = run_cover($config);
 }
 
-write_html($Options, $Template);
+write_html($config, $Template);
 
 ######### SUBROUTINES ##########
 
 sub semi_get_options {
-    $Options = get_options(\%defaults);
+    my $Options = get_options(\%defaults);
 
     print "$0 version " . __PACKAGE__->VERSION . "\n" and exit 0
         if $Options->{version};
     pod2usage(-exitval => 0, -verbose => 0)  if $Options->{help};
     pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
 
-    $Options->{outputdir}  ||= $Options->{directory};
-    $Options->{outputfile} ||= "coverage.html";
-    push @{$Options->{module}}, @ARGV;
-    if (!$Options->{redo_cpancover_html} && !@{$Options->{module}})
+    # Processing of command-line options has been completed;
+    # processing of files listed on command-line remains.
+
+    my $config;
+    while (my ($k,$v) = each(%{$Options})) {
+        $config->{$k} = $v;
+    }
+    $config->{outputdir}  ||= $config->{directory};
+    $config->{outputfile} ||= "coverage.html";
+    push @{$config->{module}}, @ARGV;
+    if (!$config->{redo_cpancover_html} && !@{$config->{module}})
     {
-        my $d = $Options->{directory};
+        my $d = $config->{directory};
         opendir my $D, $d or die "Can't opendir $d: $!\n";
-        @{$Options->{module}} = grep !/^\./ && -e "$d/$_/Makefile.PL",
+        @{$config->{module}} = grep !/^\./ && -e "$d/$_/Makefile.PL",
                                      sort readdir $D
             or die "No module directories found\n";
         closedir $D or die "Can't closedir $d: $!\n";
     }
-    return $Options;
+    return $config;
 }
 
 __END__
