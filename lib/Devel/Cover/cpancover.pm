@@ -1,10 +1,12 @@
 package Devel::Cover::cpancover;
 use strict;
 use warnings;
-use Data::Dumper ();  # no import of Dumper (use Devel::Cover::Dumper if needed)
+#use Data::Dumper ();  # no import of Dumper (use Devel::Cover::Dumper if needed)
+use Data::Dumper;$Data::Dumper::Indent=1;
 use Fcntl ":flock";
 use base qw( Exporter );
 our @EXPORT_OK = qw(
+    new
     read_results
     write_stylesheet
     write_csv
@@ -13,6 +15,32 @@ our @EXPORT_OK = qw(
     run_cover
 );
 use Parallel::Iterator "iterate_as_array";
+
+sub new {
+    my ($Options) = @_;
+
+    # Processing of command-line options has been completed;
+    # processing of files listed on command-line remains.
+
+    my $config;
+    while (my ($k,$v) = each(%{$Options})) {
+        $config->{$k} = $v;
+    }
+
+    $config->{outputdir}  ||= $config->{directory};
+    $config->{outputfile} ||= "coverage.html";
+    push @{$config->{module}}, @ARGV;
+    if (!$config->{redo_cpancover_html} && !@{$config->{module}}) {
+        my $d = $config->{directory};
+        opendir my $D, $d or die "Can't opendir $d: $!\n";
+        @{$config->{module}} = grep !/^\./ && -e "$d/$_/Makefile.PL",
+                                     sort readdir $D
+            or die "No module directories found\n";
+        closedir $D or die "Can't closedir $d: $!\n";
+    }
+
+    return $config;
+}
 
 sub read_results {
     my $Options = shift;
@@ -34,12 +62,8 @@ sub read_results {
     return \%results;
 }
 
-
-sub write_stylesheet {
-    my $Options = shift;
-    my $css = "$Options->{outputdir}/cpancover.css";
-    open CSS, ">", $css or return;
-    print CSS <<EOF;
+sub default_css {
+    my $css = <<EOF;
 /* Stylesheet for Devel::Cover cpancover reports */
 
 /* You may modify this file to alter the appearance of your coverage
@@ -129,8 +153,15 @@ pre,.s {
     border: solid 1px #009900;
 }
 EOF
+    return $css;
+}
 
-    close CSS or die "Can't close $css: $!\n";
+sub write_stylesheet {
+    my $Options = shift;
+    my $css = "$Options->{outputdir}/cpancover.css";
+    open my $CSS, ">", $css or return;
+    print $CSS default_css();
+    close $CSS or die "Can't close $css: $!\n";
 }
 
 sub write_csv {
@@ -178,6 +209,7 @@ sub write_html {
     chdir $d or die "Can't chdir $d: $!\n";
 
     my $results = read_results($Options);
+
     my $f = "$Options->{outputdir}/$Options->{outputfile}";
     print "\n\nWriting cpancover output to $f ...\n";
 

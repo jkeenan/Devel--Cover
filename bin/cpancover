@@ -24,7 +24,7 @@ use Devel::Cover::cpancover::Defaults qw(
 );
 use Devel::Cover::cpancover::Template::Provider;
 use Devel::Cover::cpancover qw(
-    read_results
+    new
     write_html
     run_cover
 );
@@ -32,10 +32,20 @@ use Devel::Cover::cpancover qw(
 use Getopt::Long;
 use Template 2.00;
 
-
 $|++;
 
-my $config = semi_get_options();
+my $Options = get_options(\%defaults);
+
+print "$0 version " . __PACKAGE__->VERSION . "\n" and exit 0
+    if $Options->{version};
+pod2usage(-exitval => 0, -verbose => 0)  if $Options->{help};
+pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
+
+my $config = new($Options);
+
+if ($config->{collect}) {
+    $config = run_cover($config);
+}
 
 my $Template = Template->new( {
     LOAD_TEMPLATES =>
@@ -44,43 +54,9 @@ my $Template = Template->new( {
     ],
 } );
 
-if ($config->{collect}) {
-    $config = run_cover($config);
-}
-
 write_html($config, $Template);
 
 ######### SUBROUTINES ##########
-
-sub semi_get_options {
-    my $Options = get_options(\%defaults);
-
-    print "$0 version " . __PACKAGE__->VERSION . "\n" and exit 0
-        if $Options->{version};
-    pod2usage(-exitval => 0, -verbose => 0)  if $Options->{help};
-    pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
-
-    # Processing of command-line options has been completed;
-    # processing of files listed on command-line remains.
-
-    my $config;
-    while (my ($k,$v) = each(%{$Options})) {
-        $config->{$k} = $v;
-    }
-    $config->{outputdir}  ||= $config->{directory};
-    $config->{outputfile} ||= "coverage.html";
-    push @{$config->{module}}, @ARGV;
-    if (!$config->{redo_cpancover_html} && !@{$config->{module}})
-    {
-        my $d = $config->{directory};
-        opendir my $D, $d or die "Can't opendir $d: $!\n";
-        @{$config->{module}} = grep !/^\./ && -e "$d/$_/Makefile.PL",
-                                     sort readdir $D
-            or die "No module directories found\n";
-        closedir $D or die "Can't closedir $d: $!\n";
-    }
-    return $config;
-}
 
 __END__
 
