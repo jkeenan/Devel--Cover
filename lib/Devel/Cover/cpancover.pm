@@ -182,17 +182,17 @@ sub write_csv {
 					condition_class condition_details condition_pc
 					pod_class pod_details pod_pc
 					statement_class statement_details statement_pc
-					subroutine_class subroutine_details sbroutine_pc
+					subroutine_class subroutine_details subroutine_pc
 					total_class total_details total_pc/;
 	print $fh join(",", @header ) . "\n";
 	foreach my $release  (keys %{$data->{vals}} ) {
 
 		my $line = [];
 		push @$line, $release,
-		push @$line, '';
 		push @$line, $data->{vals}{$release}{link};
 
-		foreach my $level1 ( qw/branch condition pod statement/ ) {
+		foreach my $level1 (
+            qw/branch condition pod statement subroutine total/ ) {
 			foreach my $level2 ( qw/class details pc/ ) {
 				push @$line, $data->{vals}{$release}{$level1}{$level2};
 			} 			
