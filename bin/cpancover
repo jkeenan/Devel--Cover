@@ -52,8 +52,6 @@ my $Template = Template->new( {
 
 $config->write_html($Template);
 
-######### SUBROUTINES ##########
-
 __END__
 
 =head1 NAME
@@ -62,10 +60,42 @@ cpancover - report coverage statistics on CPAN modules
 
 =head1 SYNOPSIS
 
- cpancover -help -info -version
+    cpancover -help -info -version
 
 =head1 DESCRIPTION
 
+F<cpancover> is a program for gathering and displaying test coverage
+statistics on multiple directories ("distribution directories") underneath a
+common top-level directory.  The program assumes that each distribution
+directory contains subdirectories and files in a format appropriate and
+typical for uploading to the Comprehensive Perl Archive Network (CPAN).
+
+(Currently, the presence of a file called F<Makefile.PL> in a distribution
+directory is used as a proxy for CPAN-readiness.   This may change in a future
+release.)
+
+The program changes into each distribution directory, creates a Makefile,
+builds the library, tests the library with flags for coverage analysis turned
+on, then calls F<cover> to generate coverage statistics in HTML format for
+each distribution in turn.  When each distribution has been analyzed an
+overall summary page is generated in HTML, as is a file in CSV format.
+
+Example: The directory tree starting at F<~/tmp> is suitable for F<cpancover>
+and will perform coverage analysis on List-Compare and :
+
+    ~/tmp/List-Compare-0.37/
+                           /Makefile.PL
+                           /lib/List/Compare.pm
+                           /t/test.t
+    ~/tmp/TAP-Harness-Multiple-0.07/
+                           /Makefile.PL
+                           /lib/TAP/Harness/Archive/MultipleHarnesses.pm
+                           /t/test.t
+
+As is the case when using F<cover> on a single distribution, F<cpancover>'s
+statistics can then be used to identify places where additional tests need to
+be written and to identify unreachable and potentially removable locations in
+the source code.
 
 =head1 OPTIONS
 
@@ -89,9 +119,6 @@ The following command line options are supported:
     -redo_html              - defaults to 'off'
     -report                 - type of output generated; defaults to
                               'html_basic'
-
-=head1 DETAILS
-
 
 =head1 REQUIREMENTS
 
