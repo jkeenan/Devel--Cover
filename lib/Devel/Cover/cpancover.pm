@@ -1,7 +1,6 @@
 package Devel::Cover::cpancover;
 use strict;
 use warnings;
-#use Data::Dumper ();  # no import of Dumper (use Devel::Cover::Dumper if needed)
 use Data::Dumper;$Data::Dumper::Indent=1;
 use Fcntl ":flock";
 use base qw( Exporter );
@@ -17,7 +16,7 @@ our @EXPORT_OK = qw(
 use Parallel::Iterator "iterate_as_array";
 
 sub new {
-    my ($Options) = @_;
+    my ($class, $Options) = @_;
 
     # Processing of command-line options has been completed;
     # processing of files listed on command-line remains.
@@ -39,12 +38,86 @@ sub new {
         closedir $D or die "Can't closedir $d: $!\n";
     }
 
-    return $config;
+    return bless($config, $class);
+}
+
+sub run_cover {
+    my $self = shift;
+    my $workers = $ENV{CPANCOVER_WORKERS} || 0;
+    my @res = iterate_as_array
+    (
+        { workers => $workers },
+        sub {
+            eval {
+              $self->get_cover($_[1]);
+              warn "\n\n\n[$_[1]]: $@\n\n\n" if $@;
+          };
+        },
+        $self->{module},
+    );
+}
+
+sub write_html {
+    my ($self, $Template) = @_;
+    my $d = $self->{directory};
+    chdir $d or die "Can't chdir $d: $!\n";
+
+    my $results = $self->read_results();
+
+    my $f = "$self->{outputdir}/$self->{outputfile}";
+    print "\n\nWriting cpancover output to $f ...\n";
+
+    my %vals;
+    my $vars = {
+        title   => "CPAN Coverage report",
+        modules => [],
+        vals    => \%vals,
+    };
+
+    for my $module (sort keys %$results) {
+        my $dbdir = "$self->{directory}/$module/cover_db";
+        next unless -d $dbdir;
+        chdir "$self->{directory}/$module";
+        print "Adding $module from $dbdir\n";
+
+        eval {
+            my $db = Devel::Cover::DB->new(db => $dbdir);
+            # next unless $db->is_valid;
+
+            my $criteria = $vars->{criteria} ||=
+                           [ grep(!/path|time/, $db->all_criteria) ];
+            $vars->{headers} ||=
+                           [ grep(!/path|time/, $db->all_criteria_short) ];
+
+            my %options = map { $_ => 1 } @$criteria;
+            $db->calculate_summary(%options);
+
+            push @{$vars->{modules}}, $module;
+            $vals{$module}{link} = "$module/$self->{outputfile}";
+
+            for my $criterion (@$criteria)
+            {
+                my $summary = $db->summary("Total", $criterion);
+                my $pc = $summary->{percentage};
+                $pc = defined $pc ? sprintf "%6.2f", $pc : "n/a";
+                $vals{$module}{$criterion}{pc}      = $pc;
+                $vals{$module}{$criterion}{class}   = class($pc);
+                $vals{$module}{$criterion}{details} =
+                  ($summary->{covered} || 0) . " / " . ($summary->{total} || 0);
+            }
+        }
+    }
+    $self->write_stylesheet();
+    $Template->process("summary", $vars, $f) or die $Template->error();
+    $self->write_csv($vars);
+	
+    print "done.\n";
+    print "\n\nWrote cpancover output to $f\n";
 }
 
 sub read_results {
-    my $Options = shift;
-    my $f = "$Options->{outputdir}/cover.results";
+    my $self = shift;
+    my $f = "$self->{outputdir}/cover.results";
     my %results;
 
     open my $fh, "<", $f or return;
@@ -60,6 +133,46 @@ sub read_results {
     close $fh or die "Can't close $f: $!\n";
 
     return \%results;
+}
+
+sub write_stylesheet {
+    my $self = shift;
+    my $css = "$self->{outputdir}/cpancover.css";
+    open my $CSS, ">", $css or return;
+    print $CSS default_css();
+    close $CSS or die "Can't close $css: $!\n";
+}
+
+sub write_csv {
+	my ($self, $data) = @_;
+
+	open(my $fh, ">", "$self->{outputdir}/cpan_cover.csv")
+		or die "cannot open > cpan_cover.txt: $!";
+	# TODO GET DISTRIBUTION
+	my @header = qw/release distribution link
+					branch_class branch_details branch_pc
+					condition_class condition_details condition_pc
+					pod_class pod_details pod_pc
+					statement_class statement_details statement_pc
+					subroutine_class subroutine_details subroutine_pc
+					total_class total_details total_pc/;
+	print $fh join(",", @header ) . "\n";
+	foreach my $release  (keys %{$data->{vals}} ) {
+
+		my $line = [];
+		push @$line, $release,
+		push @$line, $data->{vals}{$release}{link};
+
+		foreach my $level1 (
+            qw/branch condition pod statement subroutine total/ ) {
+			foreach my $level2 ( qw/class details pc/ ) {
+				push @$line, $data->{vals}{$release}{$level1}{$level2};
+			} 			
+		}
+		print $fh join ( ",",@$line)."\n";
+	}
+	close $fh;
+    print "\n\nWrote cpan_cover.csv output to $self->{outputdir}/cpan_cover.csv\n";
 }
 
 sub default_css {
@@ -156,111 +269,6 @@ EOF
     return $css;
 }
 
-sub write_stylesheet {
-    my $Options = shift;
-    my $css = "$Options->{outputdir}/cpancover.css";
-    open my $CSS, ">", $css or return;
-    print $CSS default_css();
-    close $CSS or die "Can't close $css: $!\n";
-}
-
-sub write_csv {
-	my ($data,$Options) = @_;
-
-	open(my $fh, ">", "$Options->{outputdir}/cpan_cover.csv")
-		or die "cannot open > cpan_cover.txt: $!";
-	# release, distribution,link,
-	#	branch_class,branch_details,branch_pc,
-	#	conditon_class,condition_details,condition_pc,
-	#	pod_class,pod_details,pod_pc,
-	#	statement_class,statement_details,statement_pc,
-	#	subroutine_class,subroutine_details,subroutetine_pc,
-	#	total_class,total_details,total_pc
-	# TODO GET DISTRIBUTION
-	my @header = qw/release distribution link
-					branch_class branch_details branch_pc
-					condition_class condition_details condition_pc
-					pod_class pod_details pod_pc
-					statement_class statement_details statement_pc
-					subroutine_class subroutine_details subroutine_pc
-					total_class total_details total_pc/;
-	print $fh join(",", @header ) . "\n";
-	foreach my $release  (keys %{$data->{vals}} ) {
-
-		my $line = [];
-		push @$line, $release,
-		push @$line, $data->{vals}{$release}{link};
-
-		foreach my $level1 (
-            qw/branch condition pod statement subroutine total/ ) {
-			foreach my $level2 ( qw/class details pc/ ) {
-				push @$line, $data->{vals}{$release}{$level1}{$level2};
-			} 			
-		}
-		print $fh join ( ",",@$line)."\n";
-	}
-	close $fh;
-    print "\n\nWrote cpan_cover.csv output to $Options->{outputdir}/cpan_cover.csv\n";
-}
-
-sub write_html {
-    my ($Options, $Template) = @_;
-    my $d = $Options->{directory};
-    chdir $d or die "Can't chdir $d: $!\n";
-
-    my $results = read_results($Options);
-
-    my $f = "$Options->{outputdir}/$Options->{outputfile}";
-    print "\n\nWriting cpancover output to $f ...\n";
-
-    my %vals;
-    my $vars = {
-        title   => "CPAN Coverage report",
-        modules => [],
-        vals    => \%vals,
-    };
-
-    for my $module (sort keys %$results) {
-        my $dbdir = "$Options->{directory}/$module/cover_db";
-        next unless -d $dbdir;
-        chdir "$Options->{directory}/$module";
-        print "Adding $module from $dbdir\n";
-
-        eval {
-            my $db = Devel::Cover::DB->new(db => $dbdir);
-            # next unless $db->is_valid;
-
-            my $criteria = $vars->{criteria} ||=
-                           [ grep(!/path|time/, $db->all_criteria) ];
-            $vars->{headers} ||=
-                           [ grep(!/path|time/, $db->all_criteria_short) ];
-
-            my %options = map { $_ => 1 } @$criteria;
-            $db->calculate_summary(%options);
-
-            push @{$vars->{modules}}, $module;
-            $vals{$module}{link} = "$module/$Options->{outputfile}";
-
-            for my $criterion (@$criteria)
-            {
-                my $summary = $db->summary("Total", $criterion);
-                my $pc = $summary->{percentage};
-                $pc = defined $pc ? sprintf "%6.2f", $pc : "n/a";
-                $vals{$module}{$criterion}{pc}      = $pc;
-                $vals{$module}{$criterion}{class}   = class($pc);
-                $vals{$module}{$criterion}{details} =
-                  ($summary->{covered} || 0) . " / " . ($summary->{total} || 0);
-            }
-        }
-    }
-    write_stylesheet($Options);
-    $Template->process("summary", $vars, $f) or die $Template->error();
-    write_csv($vars,$Options);
-	
-    print "done.\n";
-    print "\n\nWrote cpancover output to $f\n";
-}
-
 sub class {
     my ($pc) = @_;
     $pc eq "n/a" ? "na" :
@@ -271,11 +279,11 @@ sub class {
 }
 
 sub get_cover {
-    my ($module, $Options) = @_;
+    my ($self, $module) = @_;
 
     print "\n\n\n**** Checking coverage of $module ****\n\n\n";
 
-    my $d = "$Options->{directory}/$module";
+    my $d = "$self->{directory}/$module";
     chdir $d or die "Can't chdir $d: $!\n";
 
     my $db = "$d/cover_db";
@@ -284,24 +292,24 @@ sub get_cover {
     my $out = "cover.out";
     unlink $out;
 
-    my $test = !-e "$db/runs" || $Options->{force} ? " -test" : "";
+    my $test = !-e "$db/runs" || $self->{force} ? " -test" : "";
     if ($test)
     {
         print "Testing $module\n";
         sys("$^X Makefile.PL >> $out 2>&1") unless -e "Makefile";
     }
 
-    my $od = "$Options->{outputdir}/$module";
-    my $of = $Options->{outputfile};
+    my $od = "$self->{outputdir}/$module";
+    my $of = $self->{outputfile};
     my $timeout = 900;  # fifteen minutes should be enough
 
-    if ($test || !-e "$od/$of" || $Options->{redo_html})
+    if ($test || !-e "$od/$of" || $self->{redo_html})
     {
         eval
         {
             local $SIG{ALRM} = sub { die "alarm\n" };
             alarm $timeout;
-            sys("cover$test -report $Options->{report} " .
+            sys("cover$test -report $self->{report} " .
                 "-outputdir $od -outputfile $of " .
                 ">> $out 2>&1");
             alarm 0;
@@ -313,8 +321,8 @@ sub get_cover {
         }
     }
 
-    my $results = read_results($Options);
-    my $f = "$Options->{outputdir}/cover.results";
+    my $results = $self->read_results();
+    my $f = "$self->{outputdir}/cover.results";
 
     $results->{$module} = 1;
 
@@ -338,23 +346,6 @@ sub sys {
     my ($command) = @_;
     print "$command\n";
     system $command;
-}
-
-sub run_cover {
-    my $Options = shift;
-    my $workers = $ENV{CPANCOVER_WORKERS} || 0;
-    my @res = iterate_as_array
-    (
-        { workers => $workers },
-        sub {
-            eval {
-              get_cover ($_[1], $Options);
-              warn "\n\n\n[$_[1]]: $@\n\n\n" if $@;
-          };
-        },
-        $Options->{module},
-    );
-    return $Options;
 }
 
 1;

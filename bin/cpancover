@@ -23,11 +23,7 @@ use Devel::Cover::cpancover::Defaults qw(
     get_options
 );
 use Devel::Cover::cpancover::Template::Provider;
-use Devel::Cover::cpancover qw(
-    new
-    write_html
-    run_cover
-);
+use Devel::Cover::cpancover;
 
 use Getopt::Long;
 use Template 2.00;
@@ -41,10 +37,10 @@ print "$0 version " . __PACKAGE__->VERSION . "\n" and exit 0
 pod2usage(-exitval => 0, -verbose => 0)  if $Options->{help};
 pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
 
-my $config = new($Options);
+my $config = Devel::Cover::cpancover->new($Options);
 
 if ($config->{collect}) {
-    $config = run_cover($config);
+    $config->run_cover;
 }
 
 my $Template = Template->new( {
@@ -54,7 +50,7 @@ my $Template = Template->new( {
     ],
 } );
 
-write_html($config, $Template);
+$config->write_html($Template);
 
 ######### SUBROUTINES ##########
 
