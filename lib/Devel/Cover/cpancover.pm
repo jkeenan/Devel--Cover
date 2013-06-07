@@ -3,16 +3,6 @@ use strict;
 use warnings;
 use Data::Dumper;$Data::Dumper::Indent=1;
 use Fcntl ":flock";
-use base qw( Exporter );
-our @EXPORT_OK = qw(
-    new
-    read_results
-    write_stylesheet
-    write_csv
-    write_html
-    get_cover
-    run_cover
-);
 use Parallel::Iterator "iterate_as_array";
 
 sub new {
