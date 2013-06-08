@@ -48,7 +48,11 @@ my $Template = Template->new( {
     ],
 } );
 
-$self->write_html($Template);
+my $vars = $self->prepare_coverage_data();
+$self->write_html($vars, $Template);
+$self->write_csv($vars);
+	
+print "\nDone.\n";
 
 __END__
 

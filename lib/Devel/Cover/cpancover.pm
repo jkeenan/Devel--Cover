@@ -48,14 +48,11 @@ sub run_cover {
     );
 }
 
-sub write_html {
-    my ($self, $Template) = @_;
+sub prepare_coverage_data {
+    my ($self) = @_;
     chdir $self->{directory} or die "Can't chdir $self->{directory}: $!\n";
 
     my $results = $self->read_results();
-
-    my $f = "$self->{outputdir}/$self->{outputfile}";
-    print "\n\nWriting cpancover output to $f ...\n";
 
     my %vals;
     my $vars = {
@@ -64,11 +61,12 @@ sub write_html {
         vals    => \%vals,
     };
 
+    print "\n";
     for my $module (sort keys %$results) {
         my $dbdir = "$self->{directory}/$module/cover_db";
         next unless -d $dbdir;
         chdir "$self->{directory}/$module";
-        print "Adding $module from $dbdir\n";
+        print "Adding $module from: $dbdir\n";
 
         eval {
             my $db = Devel::Cover::DB->new(db => $dbdir);
@@ -97,12 +95,19 @@ sub write_html {
             }
         }
     }
+    print "\n";
+    return $vars;
+}
+
+sub write_html {
+    my ($self, $vars, $Template) = @_;
+    my $html_summary = "$self->{outputdir}/$self->{outputfile}";
+
     $self->write_stylesheet();
-    $Template->process("summary", $vars, $f) or die $Template->error();
-    $self->write_csv($vars);
-	
-    print "done.\n";
-    print "\n\nWrote cpancover output to $f\n";
+    $Template->process("summary", $vars, $html_summary)
+        or die $Template->error();
+    print "cpancover output written to: $html_summary\n";
+    return 1;
 }
 
 sub read_results {
@@ -174,7 +179,8 @@ sub write_csv {
 		print $fh join ( ",",@$line)."\n";
 	}
 	close $fh;
-    print "\n\nWrote cpan_cover.csv output to $self->{outputdir}/cpan_cover.csv\n";
+    print "CSV summary written to:      $self->{outputdir}/cpan_cover.csv\n";
+    return 1;
 }
 
 sub default_css {
@@ -283,7 +289,7 @@ sub class {
 sub get_cover {
     my ($self, $module) = @_;
 
-    print "\n\n\n**** Checking coverage of $module ****\n\n\n";
+    print "\n**** Checking coverage of $module ****\n";
 
     my $d = "$self->{directory}/$module";
     chdir $d or die "Can't chdir $d: $!\n";
