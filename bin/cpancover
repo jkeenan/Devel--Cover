@@ -37,10 +37,10 @@ print "$0 version " . __PACKAGE__->VERSION . "\n" and exit 0
 pod2usage(-exitval => 0, -verbose => 0)  if $Options->{help};
 pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
 
-my $config = Devel::Cover::cpancover->new($Options);
+my $self = Devel::Cover::cpancover->new($Options);
 
-if ($config->{collect}) {
-    $config->run_cover;
+if ($self->{collect}) {
+    $self->run_cover;
 }
 
 my $Template = Template->new( {
@@ -50,7 +50,7 @@ my $Template = Template->new( {
     ],
 } );
 
-$config->write_html($Template);
+$self->write_html($Template);
 
 __END__
 
