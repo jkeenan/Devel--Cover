@@ -101,6 +101,7 @@ sub get_options {
                    redo_html!
                    report=s
                    version|v!
+                   stylesheet=s
                 )
     );
 

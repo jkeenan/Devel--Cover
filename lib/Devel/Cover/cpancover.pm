@@ -33,6 +33,7 @@ sub new {
 
 sub run_cover {
     my $self = shift;
+    return 1 unless $self->{collect};
     my $workers = $ENV{CPANCOVER_WORKERS} || 0;
     my @res = iterate_as_array
     (
@@ -49,8 +50,7 @@ sub run_cover {
 
 sub write_html {
     my ($self, $Template) = @_;
-    my $d = $self->{directory};
-    chdir $d or die "Can't chdir $d: $!\n";
+    chdir $self->{directory} or die "Can't chdir $self->{directory}: $!\n";
 
     my $results = $self->read_results();
 
@@ -129,7 +129,19 @@ sub write_stylesheet {
     my $self = shift;
     my $css = "$self->{outputdir}/cpancover.css";
     open my $CSS, ">", $css or return;
-    print $CSS default_css();
+    unless ($self->{stylesheet}) {
+        print $CSS default_css();
+    }
+    else {
+        local $/ = undef;
+        my $css = '';
+        open my $READ, '<', $self->{stylesheet}
+            or die "Unable to open stylesheet '$self->{stylesheet}' for reading: $!";
+        $css = <$READ>;
+        close $READ
+            or die "Unable to close stylesheet '$self->{stylesheet}' after reading: $!";
+        print $CSS $css;
+    }
     close $CSS or die "Can't close $css: $!\n";
 }
 

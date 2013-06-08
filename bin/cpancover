@@ -39,9 +39,7 @@ pod2usage(-exitval => 0, -verbose => 2)  if $Options->{info};
 
 my $self = Devel::Cover::cpancover->new($Options);
 
-if ($self->{collect}) {
-    $self->run_cover;
-}
+$self->run_cover();
 
 my $Template = Template->new( {
     LOAD_TEMPLATES =>
@@ -119,6 +117,7 @@ The following command line options are supported:
     -redo_html              - defaults to 'off'
     -report                 - type of output generated; defaults to
                               'html_basic'
+    -stylesheet             - absolute path to user-provided stylesheet (.css)
 
 =head1 REQUIREMENTS
 
