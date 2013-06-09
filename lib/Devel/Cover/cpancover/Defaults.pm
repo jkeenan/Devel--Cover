@@ -102,6 +102,7 @@ sub get_options {
                    report=s
                    version|v!
                    stylesheet=s
+                   silent!
                 )
     );
 

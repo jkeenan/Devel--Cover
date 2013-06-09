@@ -52,7 +52,7 @@ my $vars = $self->prepare_coverage_data();
 $self->write_html($vars, $Template);
 $self->write_csv($vars);
 	
-print "\nDone.\n";
+print "\nDone.\n" unless $self->{silent};
 
 __END__
 
@@ -122,6 +122,7 @@ The following command line options are supported:
     -report                 - type of output generated; defaults to
                               'html_basic'
     -stylesheet             - absolute path to user-provided stylesheet (.css)
+    -silent                 - suppress logging output
 
 =head1 REQUIREMENTS
 

@@ -61,12 +61,12 @@ sub prepare_coverage_data {
         vals    => \%vals,
     };
 
-    print "\n";
+    print "\n" unless $self->{silent};
     for my $module (sort keys %$results) {
         my $dbdir = "$self->{directory}/$module/cover_db";
         next unless -d $dbdir;
         chdir "$self->{directory}/$module";
-        print "Adding $module from: $dbdir\n";
+        print "Adding $module from: $dbdir\n" unless $self->{silent};
 
         eval {
             my $db = Devel::Cover::DB->new(db => $dbdir);
@@ -95,7 +95,7 @@ sub prepare_coverage_data {
             }
         }
     }
-    print "\n";
+    print "\n" unless $self->{silent};
     return $vars;
 }
 
@@ -106,7 +106,7 @@ sub write_html {
     $self->write_stylesheet();
     $Template->process("summary", $vars, $html_summary)
         or die $Template->error();
-    print "cpancover output written to: $html_summary\n";
+    print "cpancover output written to: $html_summary\n" unless $self->{silent};
     return 1;
 }
 
@@ -115,17 +115,17 @@ sub read_results {
     my $f = "$self->{outputdir}/cover.results";
     my %results;
 
-    open my $fh, "<", $f or return;
+    open my $FH, "<", $f or return;
     my $try;
-    until (flock $fh, LOCK_SH) {
+    until (flock $FH, LOCK_SH) {
         die "Can't lock $f: $!\n" if $try++ > 60;
         sleep 1;
     }
-    while (<$fh>) {
+    while (<$FH>) {
         my ($mod, $status) = split;
         $results{$mod} = $status;
     }
-    close $fh or die "Can't close $f: $!\n";
+    close $FH or die "Can't close $f: $!\n";
 
     return \%results;
 }
@@ -153,7 +153,7 @@ sub write_stylesheet {
 sub write_csv {
 	my ($self, $data) = @_;
 
-	open(my $fh, ">", "$self->{outputdir}/cpan_cover.csv")
+	open(my $FH, ">", "$self->{outputdir}/cpan_cover.csv")
 		or die "cannot open > cpan_cover.txt: $!";
 	# TODO GET DISTRIBUTION
 	my @header = qw/release distribution link
@@ -163,7 +163,7 @@ sub write_csv {
 					statement_class statement_details statement_pc
 					subroutine_class subroutine_details subroutine_pc
 					total_class total_details total_pc/;
-	print $fh join(",", @header ) . "\n";
+	print $FH join(",", @header ) . "\n";
 	foreach my $release  (keys %{$data->{vals}} ) {
 
 		my $line = [];
@@ -176,10 +176,11 @@ sub write_csv {
 				push @$line, $data->{vals}{$release}{$level1}{$level2};
 			} 			
 		}
-		print $fh join ( ",",@$line)."\n";
+		print $FH join ( ",",@$line)."\n";
 	}
-	close $fh;
-    print "CSV summary written to:      $self->{outputdir}/cpan_cover.csv\n";
+	close $FH;
+    print "CSV summary written to:      $self->{outputdir}/cpan_cover.csv\n"
+        unless $self->{silent};
     return 1;
 }
 
@@ -289,13 +290,15 @@ sub class {
 sub get_cover {
     my ($self, $module) = @_;
 
-    print "\n**** Checking coverage of $module ****\n";
+    print "\n**** Checking coverage of $module ****\n" unless $self->{silent};
 
     my $d = "$self->{directory}/$module";
     chdir $d or die "Can't chdir $d: $!\n";
 
     my $db = "$d/cover_db";
-    print "Already analysed\n" if -d $db;
+    if ((-d $db) and (not $self->{silent})) {
+        print "Already analysed\n";
+    };
 
     my $out = "cover.out";
     unlink $out;
@@ -303,8 +306,8 @@ sub get_cover {
     my $test = !-e "$db/runs" || $self->{force} ? " -test" : "";
     if ($test)
     {
-        print "Testing $module\n";
-        sys("$^X Makefile.PL >> $out 2>&1") unless -e "Makefile";
+        print "Testing $module\n" unless $self->{silent};
+        $self->sys("$^X Makefile.PL >> $out 2>&1") unless -e "Makefile";
     }
 
     my $od = "$self->{outputdir}/$module";
@@ -317,9 +320,22 @@ sub get_cover {
         {
             local $SIG{ALRM} = sub { die "alarm\n" };
             alarm $timeout;
-            sys("cover$test -report $self->{report} " .
-                "-outputdir $od -outputfile $of " .
-                ">> $out 2>&1");
+            my $cmd = join(' ' => (
+                 "cover$test",
+                 "-report",
+                 $self->{report},
+                 "-outputdir",
+                 $od,
+                 "-outputfile",
+                 $of,
+            ) );
+            $cmd .= " -silent " if $self->{silent};
+            $cmd .= join(' ' => (
+                 '>>',
+                 $out,
+                 '2>&1',
+            ) );
+            $self->sys("$cmd");
             alarm 0;
         };
         if ($@)
@@ -334,25 +350,26 @@ sub get_cover {
 
     $results->{$module} = 1;
 
-    open my $fh, ">", $f or die "Can't open $f: $!\n";
+    open my $FH, ">", $f or die "Can't open $f: $!\n";
     my $try;
-    until (flock $fh, LOCK_EX)
+    until (flock $FH, LOCK_EX)
     {
         die "Can't lock $f: $!\n" if $try++ > 60;
         sleep 1;
     }
     for my $mod (sort keys %$results)
     {
-        print $fh "$mod $results->{$mod}\n";
+        print $FH "$mod $results->{$mod}\n";
     }
-    close $fh or die "Can't close $f: $!\n";
+    close $FH or die "Can't close $f: $!\n";
 
-    sys("cat $out") if -e $out;
+    $self->sys("cat $out")
+        if ((-e $out) and (not $self->{silent}));
 }
 
 sub sys {
-    my ($command) = @_;
-    print "$command\n";
+    my ($self, $command) = @_;
+    print "$command\n" unless $self->{silent};
     system $command;
 }
 
